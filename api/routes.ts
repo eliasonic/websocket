@@ -1,4 +1,5 @@
 import { Router } from "express";
+import auth from "./auth";
 import userRoutes from "./user";
 
 export default function api() {
@@ -12,6 +13,8 @@ export default function api() {
             }
             next()
         })
+
+        .use('/', auth())
 
         .use('/users', userRoutes())
 

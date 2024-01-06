@@ -1,4 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
+import { COOKIE_SECRET } from "../utils";
 import { resolve } from "path";
 import api from "./routes";
 
@@ -12,6 +14,8 @@ function configure (app: Express) {
         .use(express.json())
 
         .use(express.static('public'))
+
+        .use(cookieParser(COOKIE_SECRET))
 
         .use('/api/v1', api())
 

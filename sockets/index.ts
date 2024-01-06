@@ -1,5 +1,8 @@
 import { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import cookieParser from "cookie-parser";
+import { COOKIE_SECRET, AT_KEY, verifyToken } from "../utils";
+import { Request, Response } from 'express'
 
 const HEARTBEAT_INTERVAL = 1000 * 5
 const HEARTBEAT_VALUE = 1
@@ -14,16 +17,27 @@ function configureSocket (s: Server) {
     s.on('upgrade', (req, socket, head) => {
         socket.on('error', (e) => console.log(e))
 
-        if (!!req.headers['BadAuth']) {
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-            socket.destroy()
-            return
-        }
+        // perform auth
+        cookieParser(COOKIE_SECRET)(req as Request, {} as Response, () => {
+            const signedCookies = (req as Request).signedCookies
+            let at = signedCookies[AT_KEY]
 
-        wss.handleUpgrade(req, socket, head, (ws) => {
-            socket.removeListener('error', (e) => console.log(e))
-            wss.emit('connection', ws, req)
-        })
+            if (!at && !!req.url) {
+                const url = new URL(req.url, `ws://${req.headers.host}`)
+                at = url.searchParams.get('at')
+            }            
+
+            if (!verifyToken(at)) {
+                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+                socket.destroy()
+                return
+            }
+    
+            wss.handleUpgrade(req, socket, head, (ws) => {
+                socket.removeListener('error', (e) => console.log(e))
+                wss.emit('connection', ws, req)
+            })
+        })    
     })
 
     wss.on('connection', (ws, req) => {

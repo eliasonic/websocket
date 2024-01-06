@@ -1,10 +1,13 @@
 (function () {
     let ws: WebSocketExt
     const wsOpen = <HTMLButtonElement>document.getElementById('ws-open')
+    const wsTkOpen = <HTMLButtonElement>document.getElementById('ws-tk-open')
     const wsClose = <HTMLButtonElement>document.getElementById('ws-close')
     const wsSend = <HTMLButtonElement>document.getElementById('ws-send')
     const wsInput = <HTMLInputElement>document.getElementById('ws-input')
     const messages = <HTMLElement>document.getElementById('messages')
+    const login = <HTMLButtonElement>document.getElementById('login')
+    const logout = <HTMLButtonElement>document.getElementById('logout')    
 
     const HEARTBEAT_TIMEOUT = ((1000 * 5) + (1000 * 1))
     const HEARTBEAT_VALUE = 1
@@ -42,32 +45,37 @@
         ws.send(data)
     }
 
-    wsOpen.onclick = () => {
-        closeConnection()
+    function openConnection(at?: string) {
+        return () => {
+            closeConnection()
 
-        ws = new WebSocket('ws://localhost:3000') as WebSocketExt
+            ws = new WebSocket(`ws://localhost:3000${!at ? '' : `/?at=${at}`}`) as WebSocketExt
 
-        ws.addEventListener('error', () => showMessage('WebSocket error'))
+            ws.addEventListener('error', () => showMessage('WebSocket error'))
 
-        ws.addEventListener('open', () => showMessage('WebSocket connection established'))
+            ws.addEventListener('open', () => showMessage('WebSocket connection established'))
 
-        ws.addEventListener('close', () => {
-            showMessage('WebSocket connection closed')
+            ws.addEventListener('close', () => {
+                showMessage('WebSocket connection closed')
 
-            if (!!ws.pingTimeout) {
-                clearTimeout(ws.pingTimeout)
-            }
-        })
+                if (!!ws.pingTimeout) {
+                    clearTimeout(ws.pingTimeout)
+                }
+            })
 
-        ws.addEventListener('message', (msg: MessageEvent<string>) => {
-            if (isBinary(msg.data)) {
-                heartbeat()
-            } else {
-                showMessage(`Received message: ${msg.data}`)
-            }
-            
-        })
+            ws.addEventListener('message', (msg: MessageEvent<string>) => {
+                if (isBinary(msg.data)) {
+                    heartbeat()
+                } else {
+                    showMessage(`Received message: ${msg.data}`)
+                }
+                
+            })
+        }
     }
+
+    wsOpen.onclick = openConnection() 
+    wsTkOpen.onclick = openConnection('test')
 
     wsClose.onclick = closeConnection
 
@@ -76,7 +84,7 @@
 
         if (!val) {
             return
-        } else if (!ws) {
+        } else if (!ws || ws.readyState !== WebSocket.OPEN) {
             showMessage('No websocket connection')
             return
         }
@@ -85,4 +93,29 @@
         showMessage(`Sent "${val}"`)
         wsInput.value = ''
     }
+
+    login.onclick = async () => {
+        const response = await fetch('/api/v1/login')
+
+        if (response.ok) {
+            showMessage('Logged in')
+        } else {
+            showMessage('Log in error')
+        }
+    }
+
+    logout.onclick = async () => {
+        closeConnection()
+        
+        const response = await fetch('/api/v1/logout')
+
+        if (response.ok) {
+            showMessage('Logged out')
+        } else {
+            showMessage('Log out error')
+        }
+    }
+
+
 })()
+
