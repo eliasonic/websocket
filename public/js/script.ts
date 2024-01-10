@@ -8,6 +8,8 @@
     const messages = <HTMLElement>document.getElementById('messages')
     const login = <HTMLButtonElement>document.getElementById('login')
     const logout = <HTMLButtonElement>document.getElementById('logout')    
+    const wsThreadInput = <HTMLInputElement>document.getElementById('ws-thread-input')
+    const wsThreadOpen = <HTMLButtonElement>document.getElementById('ws-thread-open')
 
     const HEARTBEAT_TIMEOUT = ((1000 * 5) + (1000 * 1))
     const HEARTBEAT_VALUE = 1
@@ -45,18 +47,20 @@
         ws.send(data)
     }
 
-    function openConnection(at?: string) {
+    function openConnection(at?: string, threadid?: string) {
         return () => {
             closeConnection()
 
-            ws = new WebSocket(`ws://localhost:3000${!at ? '' : `/?at=${at}`}`) as WebSocketExt
+            ws = new WebSocket(`ws://localhost:3000${!threadid ? '' : `/thread/${threadid}`}${!at ? '' : `/?at=${at}`}`) as WebSocketExt
 
             ws.addEventListener('error', () => showMessage('WebSocket error'))
 
-            ws.addEventListener('open', () => showMessage('WebSocket connection established'))
+            ws.addEventListener('open', () => {
+                showMessage(`WebSocket connection established ${!threadid ? '' : `for thread id ${threadid}`}`)
+            })
 
             ws.addEventListener('close', () => {
-                showMessage('WebSocket connection closed')
+                showMessage(`WebSocket connection closed ${!threadid ? '' : `for thread id ${threadid}`}`)
 
                 if (!!ws.pingTimeout) {
                     clearTimeout(ws.pingTimeout)
@@ -76,6 +80,19 @@
 
     wsOpen.onclick = openConnection() 
     wsTkOpen.onclick = openConnection('test')
+
+    wsThreadOpen.onclick = () => {
+        const threadid = wsThreadInput.value
+
+        if (!threadid) {
+            showMessage('Please provide a thread ID')
+            return
+        }
+
+        openConnection('test', threadid)()
+
+        wsThreadInput.value = ''
+    }
 
     wsClose.onclick = closeConnection
 

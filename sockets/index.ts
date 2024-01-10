@@ -1,5 +1,5 @@
 import { Server } from "http";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocketServer, WebSocket, IRawDataExt, IWebSocketClients } from "ws";
 import cookieParser from "cookie-parser";
 import { COOKIE_SECRET, AT_KEY, verifyToken } from "../utils";
 import { Request, Response } from 'express'
@@ -9,6 +9,69 @@ const HEARTBEAT_VALUE = 1
 
 function ping (ws: WebSocket) {
     ws.send(HEARTBEAT_VALUE, {binary: true})
+}
+
+const clients = {
+    threads: {},
+    //scoring: {}
+} as IWebSocketClients
+
+function sendAll(ws: WebSocket, wss: WebSocketServer) {
+    ws.on('message', (msg: IRawDataExt, isBinary) => {
+        if (isBinary && msg.length === 1 && msg[0] === HEARTBEAT_VALUE) {
+            console.log('pong')
+            ws.isAlive = true
+        } else {
+            wss.clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(msg, {binary: isBinary})
+                }
+            })
+        }
+    })
+
+    ws.on('close', () => console.log('Connection closed'))
+}
+
+function sendThread(ws: WebSocket, threadid: string) {
+    if (!threadid) {
+        return
+    }
+
+    const threads = clients.threads
+
+    if (!threads[threadid]) {
+        threads[threadid] = [ws]
+    } else {
+        threads[threadid].push(ws)
+    }
+
+    ws.on('message', (msg: IRawDataExt, isBinary) => {
+        if (isBinary && msg.length === 1 && msg[0] === HEARTBEAT_VALUE) {
+            console.log('pong')
+            ws.isAlive = true
+        } else {
+            threads[threadid].forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(msg, {binary: isBinary})
+                }
+            })
+        }
+    })
+
+    ws.on('close', () => {
+        console.log('Connection closed')
+
+        const idx = threads[threadid].indexOf(ws)
+        
+        if (idx >= 0) {
+            threads[threadid].splice(idx, 1)
+
+            if (threads[threadid].length === 0) {
+                delete threads[threadid]
+            }
+        }         
+    })
 }
 
 function configureSocket (s: Server) {
@@ -45,20 +108,22 @@ function configureSocket (s: Server) {
 
         ws.on('error', (e) => console.log(e))
 
-        ws.on('message', (msg, isBinary) => {
-            if (isBinary && (msg as any)[0] === HEARTBEAT_VALUE) {
-                console.log('pong')
-                ws.isAlive = true
-            } else {
-                wss.clients.forEach((client) => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(msg, {binary: isBinary})
-                    }
-                })
-            }
-        })
+        if (!req.url) {
+            sendAll(ws, wss)
+        } else {
+            const idx = req.url.indexOf('?')
+            const uri = idx >= 0 ? req.url.slice(0, idx) : req.url
+            const paths = uri.split('/').filter((p) => !!p)
 
-        ws.on('close', () => console.log('Connection closed'))
+            switch(paths[0]) {
+                case 'thread':
+                    sendThread(ws, paths[1])
+                    break
+                default:
+                    sendAll(ws, wss)
+                    break
+            }
+        }
     })
 
     const interval = setInterval(() => {
